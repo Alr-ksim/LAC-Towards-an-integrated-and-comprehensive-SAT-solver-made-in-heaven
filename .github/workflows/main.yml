@@ -14,12 +14,12 @@ jobs:
         
     - name: Run AND tasks
       run: |
-        python main.py -i "examples/and1.cnf" >> results/and-1.txt
-        python main.py -i "examples/and2.cnf" >> results/and-2.txt
-        python main.py -i "examples/and3.cnf" >> results/and-3.txt
+        python main.py -i "examples/and1.cnf" >> "results/and-1.txt"
+        python main.py -i "examples/and2.cnf" >> "results/and-2.txt"
+        python main.py -i "examples/and3.cnf" >> "results/and-3.txt"
 
     - name: Run BMC tasks
       run: |
-        python main.py -i "examples/bmc-1.cnf" >> results/bmc-1.txt
-        python main.py -i "examples/bmc-2.cnf" >> results/bmc-2.txt
-        python main.py -i "examples/bmc-7.cnf" >> results/bmc-7.txt
+        python main.py -i "examples/bmc-1.cnf" >> "results/bmc-1.txt"
+        python main.py -i "examples/bmc-2.cnf" >> "results/bmc-2.txt"
+        python main.py -i "examples/bmc-7.cnf" >> "results/bmc-7.txt"
