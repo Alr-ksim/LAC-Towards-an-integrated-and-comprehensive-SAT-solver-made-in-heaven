@@ -23,7 +23,7 @@ def main(args):
     # Create CDCL solver and solve it!
     res = cdcl(sentence, num_vars)
 
-    save_path = open(args.output, "w", encoding="utf-8")
+    save_path = open(args.output, "w+", encoding="utf-8")
 
     if res is None:
         save_path.write("✘ No solution found")
