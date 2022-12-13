@@ -1,6 +1,6 @@
 import argparse
 
-from cdcl import cdcl
+from cdcl_ import cdcl
 from utils import read_cnf
 
 
@@ -18,7 +18,8 @@ def main(args):
         sentence, num_vars = read_cnf(f)
 
     # Create CDCL solver and solve it!
-    res = cdcl(sentence, num_vars)
+    solver = cdcl(sentence, num_vars,args.input)
+    res = solver.solve()
 
     if res is None:
         print("✘ No solution found")
