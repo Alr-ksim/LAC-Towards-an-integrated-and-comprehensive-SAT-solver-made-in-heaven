@@ -7,7 +7,10 @@ from utils import read_cnf
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-i", "--input", type=str, default="examples/bmc-1.cnf"
+        "-i", "--input", type=str, default="examples/bmc-2.cnf"
+    )
+    parser.add_argument(
+        "-o", "--output", type=str, default="results/output.txt"
     )
 
     return parser.parse_args()
@@ -21,10 +24,14 @@ def main(args):
     solver = cdcl(sentence, num_vars,args.input)
     res = solver.solve()
 
+    save_path = open(args.output, "w+", encoding="utf-8")
+
     if res is None:
-        print("✘ No solution found")
+        save_path.write("✘ No solution found")
     else:
-        print(f"✔ Successfully found a solution: {res}")
+        save_path.write(f"✔ Successfully found a solution: {res}")
+
+    save_path.close()
 
 if __name__ == "__main__":
     args = parse_args()

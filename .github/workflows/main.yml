@@ -1,0 +1,28 @@
+name: New SAT Action
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Check out
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+        
+    - name: Run AND tasks
+      run: |
+        python main.py -i "examples/and1.cnf" -o "results/and-1.txt"
+        python main.py -i "examples/and2.cnf" -o "results/and-2.txt"
+        python main.py -i "examples/and3.cnf" -o "results/and-3.txt"
+
+    - name: Run BMC tasks
+      run: |
+        python main.py -i "examples/bmc-1.cnf" -o "results/bmc-1.txt"
+        python main.py -i "examples/bmc-2.cnf" -o "results/bmc-2.txt"
+        python main.py -i "examples/bmc-7.cnf" -o "results/bmc-7.txt"
