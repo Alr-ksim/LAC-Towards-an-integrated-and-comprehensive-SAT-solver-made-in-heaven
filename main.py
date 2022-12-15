@@ -1,5 +1,4 @@
 import argparse
-
 from cdcl_ import cdcl
 from utils import read_cnf
 
@@ -7,13 +6,14 @@ from utils import read_cnf
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-i", "--input", type=str, default="examples/bmc-2.cnf"
+        "-i", "--input", type=str, default="examples/bmc-1.cnf"
     )
     parser.add_argument(
-        "-o", "--output", type=str, default="results/output.txt"
+        "-d", "--decide_method", type=str, default="LRB", choices=['VSIDS', 'CHB', 'LRB']
     )
 
     return parser.parse_args()
+
 
 def main(args):
     # Create problem.
@@ -21,17 +21,14 @@ def main(args):
         sentence, num_vars = read_cnf(f)
 
     # Create CDCL solver and solve it!
-    solver = cdcl(sentence, num_vars,args.input)
+    solver = cdcl(sentence, num_vars, args.input, args.decide_method)
     res = solver.solve()
 
-    save_path = open(args.output, "w+", encoding="utf-8")
-
     if res is None:
-        save_path.write("✘ No solution found")
+        print("✘ No solution found")
     else:
-        save_path.write(f"✔ Successfully found a solution: {res}")
+        print(f"✔ Successfully found a solution: {res}")
 
-    save_path.close()
 
 if __name__ == "__main__":
     args = parse_args()

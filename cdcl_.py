@@ -4,10 +4,56 @@ import time, datetime
 
 
 class cdcl():
-    def __init__(self, sentence, num_vars,taskname):
+    def __init__(self, sentence, num_vars, taskname, decide_method):
         self.sentence = sentence
         self.num_vars = num_vars
-        self.vsids_scores = self.init_vsids_scores()
+
+        self.init_score_func_dict = {
+            'VSIDS': self.init_vsids_scores,
+            'CHB': self.init_CHB_scores,
+            'LRB': self.init_LRB_scores
+        }
+
+        self.update_score_func_dict = {
+            'VSIDS': self.update_vsids_scores,
+            'CHB': self.update_chb_scores,
+            'LRB': self.update_lrb_scores
+        }
+        self.decide_func_dict = {
+            'VSIDS': self.decide_vsids,
+            'CHB': self.decide_chb,
+            'LRB': self.decide_lrb
+        }
+
+        self.taskname = taskname.split('/')[-1] + '_' + decide_method
+        self.decide_method = decide_method
+        self.vsids_scores = None
+
+        # *************************************
+        # variable for both CHB and LRB
+        # ************************************
+        self.alpha = None
+
+        # ************************************
+        # variables that CHB algorithm needs
+        # ***********************************
+        self.CHB_scores = None
+        self.num_conflicts = 0
+        self.plays = None
+        self.lastConflict = None
+        self.multiplier = None
+        self.UIP = []
+
+        # ************************************
+        # variables that LRB algorithm needs
+        # ************************************
+        self.LRB_scores = None
+        self.learntCounter = None
+        self.assigned = None
+        self.participated = None
+        self.reasoned = None
+
+        self.init_score()
         self.assignments = []
         self.decided_idx = []
         self.assign_map = [0] * (2 * num_vars + 1)  # A list to record the literal is assigned or not.
@@ -15,8 +61,42 @@ class cdcl():
         self.c2l_watch, self.l2c_watch = self.init_watch()
         self.start_time = None
         self.end_time = None
+
+    def init_score(self):
+        self.init_score_func_dict[self.decide_method]()
+
+    def update_score(self):
+        self.update_score_func_dict[self.decide_method]()
+
+    def decide_score(self):
+        return self.decide_func_dict[self.decide_method]()
+
+    def init_vsids_scores(self):
+        """Initialize variable scores for VSIDS."""
+        scores = {lit: 0 for lit in range(-self.num_vars, self.num_vars + 1) if lit}
+        for clause in self.sentence:
+            for lit in clause:
+                scores[lit] += 1
+        self.vsids_scores = dict(sorted(scores.items(), key=lambda kv: kv[1], reverse=True))
+        # NOTE: To speed up the progress of finding the next assigned literal, I keep the list in descending order.
+
+    # initialize CHB algorithms
+    def init_CHB_scores(self):
+        self.alpha = 0.4
         self.num_conflicts = 0
-        self.taskname = taskname.split('/')[-1]
+        self.plays = set()
+        self.lastConflict = {lit: 0 for lit in range(-self.num_vars, self.num_vars + 1) if lit}
+        self.CHB_scores = {lit: 0 for lit in range(-self.num_vars, self.num_vars + 1) if lit}
+
+    # initialize LRB algorithms
+    def init_LRB_scores(self):
+        self.learntCounter = 0
+        self.alpha = 0.4
+        self.num_conflicts = 0
+        self.LRB_scores = {lit: 0 for lit in range(-self.num_vars, self.num_vars + 1) if lit}
+        self.assigned = {lit: 0 for lit in range(-self.num_vars, self.num_vars + 1) if lit}
+        self.participated = {lit: 0 for lit in range(-self.num_vars, self.num_vars + 1) if lit}
+        self.reasoned = {lit: 0 for lit in range(-self.num_vars, self.num_vars + 1) if lit}
 
     def update_vsids_scores(self, learned_clause, decay=0.95):
         """Update VSIDS scores."""
@@ -28,6 +108,49 @@ class cdcl():
 
         self.vsids_scores = dict(sorted(self.vsids_scores.items(), key=lambda kv: kv[1], reverse=True))
 
+    def update_lrb_scores(self, decay=0.95):
+        """Update VSIDS scores."""
+        for lit in self.LRB_scores:
+            if lit not in self.assignments:
+                self.LRB_scores[lit] = self.LRB_scores[lit] * decay
+
+
+        self.LRB_scores = dict(sorted(self.vsids_scores.items(), key=lambda kv: kv[1], reverse=True))
+
+    def update_chb_scores(self):
+        for v in self.plays:
+            reward = self.multiplier / (self.num_conflicts - self.lastConflict[v] + 1)
+            self.CHB_scores[v] = (1 - self.alpha) * self.CHB_scores[v] + self.alpha * reward
+
+    def decide_vsids(self):
+        assigned_lit = None
+        # NOTE: As the vsids_scores dict is in descending order, we will just find the first unassigned literal.
+        for lit in self.vsids_scores.keys():
+            # 加vars_num以保证其在索引的时候>0,实在是太妙了
+            if (self.assign_map[lit + self.num_vars]) or (self.assign_map[-lit + self.num_vars]):
+                continue
+            assigned_lit = lit
+            break
+        return assigned_lit
+
+    def decide_chb(self):
+        assigned_lit = None
+        for lit in self.CHB_scores.keys():
+            if (self.assign_map[lit + self.num_vars]) or (self.assign_map[-lit + self.num_vars]):
+                continue
+            assigned_lit = lit
+            break
+        return assigned_lit
+
+    def decide_lrb(self):
+        assigned_lit = None
+        for lit in self.LRB_scores.keys():
+            if (self.assign_map[lit + self.num_vars]) or (self.assign_map[-lit + self.num_vars]):
+                continue
+            assigned_lit = lit
+            break
+        return assigned_lit
+
     def solve(self):
         self.start_time = time.time()
         if self.bcp() is not None:
@@ -38,7 +161,7 @@ class cdcl():
                 pbar.update(len(self.assignments) - assignment_prev)
                 assignment_prev = len(self.assignments)
 
-                assigned_lit = self.decide_vsids()
+                assigned_lit = self.decide_score()
                 self.decided_idx.append((len(self.assignments)))
                 self.assignments.append(assigned_lit)
                 self.assign_map[assigned_lit + self.num_vars] = 1
@@ -46,15 +169,59 @@ class cdcl():
 
                 # Run BCP.
                 conflict_ante = self.bcp()
+                # ***********************************
+                # for LRB algorithm
+                # ***********************************
+                if self.decide_method == 'LRB':
+                    for v in self.assignments[self.decided_idx[-1]:]:
+                        self.assigned[v] = self.learntCounter
+                        self.participated[v] = 0
+                        self.reasoned[v] = 0
+
+                # ***********************************
+                # for CHB algorithm
+                # ***********************************
+                if self.decide_method == 'CHB':
+                    # record the variables before bp
+                    assigned_prev = set(self.assignments)
+                    # update plays
+                    self.plays = {assigned_lit}
+                    # set multiplier
+                    self.multiplier = 1.0 if conflict_ante is not None else 0.9
 
                 while conflict_ante is not None:
                     self.num_conflicts += 1
                     # Learn conflict.
                     backtrack_level, learned_clause = self.analyse_conflict(conflict_ante)
+                    # *******************************
+                    # for CHB algorithm
+                    # *******************************
+                    if self.decide_method == 'CHB':
+                        if self.alpha > 0.06:
+                            self.alpha -= 1e-6
+                        tail = self.decided_idx[backtrack_level]
+                        c = self.assignments[tail:len(self.assignments)]
+                        for v in c:
+                            self.lastConflict[v] = self.num_conflicts
+                        self.plays = set(self.UIP)
+                    # ********************************
+                    # for LRB algorithm
+                    # ********************************
+                    if self.decide_method == 'LRB':
+                        self.learntCounter += 1
+                        for v in set(learned_clause).union(set(conflict_ante)):
+                            self.participated[v] += 1
+                        for v in set(self.UIP).difference(set(learned_clause)):
+                            self.reasoned[v] += 1
+
+                        if self.alpha > 0.06:
+                            self.alpha -= 1e-6
+
                     self.add_learned_clause(learned_clause)
 
-                    # Update VSIDS scores.
-                    self.update_vsids_scores(learned_clause)
+                    if self.decide_method == 'VSIDS':
+                        # Update VSIDS scores.
+                        self.update_vsids_scores(learned_clause)
 
                     # Backtrack.
                     if backtrack_level < 0:
@@ -63,6 +230,16 @@ class cdcl():
 
                     # Propagate watch.
                     conflict_ante = self.bcp(new_clause_tag=1)
+
+            # *******************************
+            # for CHB algorithm
+            # *******************************
+            if self.decide_method == 'CHB':
+                # calculate variables played
+                self.plays.union(assigned_prev.difference(set(self.assignments)))
+                # update CHB_value
+                self.update_chb_scores()
+
         self.end_time = time.time()
         self.log()
         return self.assignments  # indicate SAT
@@ -126,12 +303,14 @@ class cdcl():
         if conflict_level == 0:
             return -1, []
         last_lit = self.last_assigned_lit(learned_clause, conflict_level)
+        self.UIP = [last_lit]
         ante = self.ante_reason[last_lit + self.num_vars]
         key_var = abs(last_lit)
         learned_clause = self.resolve(learned_clause, ante, key_var)
 
         while not self.unit_at_level(learned_clause, conflict_level):
             last_lit = self.last_assigned_lit(set(learned_clause), conflict_level)
+            self.UIP.append(last_lit)
             ante = self.ante_reason[last_lit + self.num_vars]
             key_var = abs(last_lit)
             learned_clause = self.resolve(learned_clause, ante, key_var)
@@ -139,29 +318,6 @@ class cdcl():
         backtrack_level = self.track_least(set(learned_clause))
 
         return backtrack_level, learned_clause
-
-    def decide_vsids(self):
-        assigned_lit = None
-        # NOTE: As the vsids_scores dict is in descending order, we will just find the first unassigned literal.
-        for lit in self.vsids_scores.keys():
-            # 加vars_num以保证其在索引的时候>0,实在是太妙了
-            if (self.assign_map[lit + self.num_vars]) or (self.assign_map[-lit + self.num_vars]):
-                continue
-            assigned_lit = lit
-            break
-        return assigned_lit
-
-    def init_vsids_scores(self):
-        """Initialize variable scores for VSIDS."""
-
-        """ YOUR CODE HERE """
-        scores = {lit: 0 for lit in range(-self.num_vars, self.num_vars + 1) if lit}
-        for clause in self.sentence:
-            for lit in clause:
-                scores[lit] += 1
-        scores = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
-        # NOTE: To speed up the progress of finding the next assigned literal, I keep the list in descending order.
-        return dict(scores)
 
     def init_watch(self):
         n = len(self.sentence)
@@ -216,6 +372,16 @@ class cdcl():
         for i in range(tail, n):
             self.assign_map[self.assignments[i] + self.num_vars] = 0
             self.ante_reason[self.assignments[i] + self.num_vars] = []
+        # **********************************
+        # for LRB algorithm
+        # **********************************
+        if self.decide_method == 'LRB':
+            for v in self.assignments[tail:n]:
+                interval = self.learntCounter - self.assigned[v]
+                if interval > 0:
+                    r = self.participated[v] / interval
+                    rsr = self.reasoned[v] / interval
+                    self.LRB_scores[v] = (1 - self.alpha) * self.LRB_scores[v] + self.alpha * (r + rsr)
         del self.assignments[tail:n]
         del self.decided_idx[level:n]
 
@@ -261,7 +427,7 @@ class cdcl():
         return None  # indicate no conflict; other return the antecedent of the conflict
 
     def log(self):
-        w = "Time consumed: {} with conflict {} times".format(self.end_time-self.start_time,self.num_conflicts)
+        w = "Time consumed: {} with conflict {} times".format(self.end_time - self.start_time, self.num_conflicts)
         file_name = './logs/' + datetime.date.today().strftime('%m%d') + "_{}.log".format(self.taskname)
         t0 = datetime.datetime.now().strftime('%H:%M:%S')
         info = "{} : {}".format(t0, w)
