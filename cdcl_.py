@@ -1,10 +1,137 @@
 import bisect
 from tqdm import tqdm
 import time, datetime
+import numpy as np
+import math
+import random
 
+class cdcl_restart():
+    def __init__(self, sentence, num_vars, taskname, decide_method, restart_method):
+        self.sentence = sentence
+        self.num_vars = num_vars
+
+        self.taskname = taskname
+        self.taskname_write = taskname.split('/')[-1] + '_' + decide_method + '_' + restart_method
+        self.decide_method = decide_method
+        self.restart_method = restart_method
+        self.vsids_scores = None 
+        self.num_conflicts = 0
+
+        # *************************************
+        # variable for restart
+        # ************************************
+        self.conflict_threshold = 10
+        self.time_threshold = 10
+        self.num_arms = 3
+        self.emp_means = np.zeros(self.num_arms)
+        self.num_pulls = np.ones(self.num_arms)
+        self.name = ['VSIDS', 'CHB', 'LRB']
+
+    def solve(self):
+        self.start_time = time.time()
+
+        if self.restart_method == 'Nothing':
+            solver = cdcl(self.sentence, self.num_vars, self.taskname, self.decide_method, self.restart_method, self.conflict_threshold, self.vsids_scores)
+            Flag, num_decisions, sentence_tmp, vsids_scores_tmp, res, num_conflicts = solver.solve()
+            self.num_conflicts += num_conflicts
+            self.end_time = time.time()
+            self.log()
+            return res
+
+        elif self.restart_method == 'UCB':
+            for t in range(self.time_threshold):
+                if t < self.num_arms:
+                    arm = t
+                    solver = cdcl(self.sentence, self.num_vars, self.taskname, self.name[arm], self.restart_method, self.conflict_threshold, self.vsids_scores)
+                    Flag, num_decisions, sentence_tmp, vsids_scores_tmp, res, num_conflicts = solver.solve()
+                    self.num_conflicts += num_conflicts
+                    if Flag:
+                        self.end_time = time.time()
+                        self.log()
+                        return res
+                    else:
+                        self.sentence = sentence_tmp
+                        self.vsids_scores = vsids_scores_tmp
+                        self.emp_means[arm] = math.log(num_decisions, 2)/len(res)
+                    continue
+
+                self.choice = np.zeros(self.num_arms)
+                for i in range(self.num_arms):
+                    self.choice[i] = self.emp_means[i] + math.sqrt(4*math.log(t)/self.num_pulls[i])
+                arm = np.argmax(self.choice)
+                # print(self.choice)
+                # print(self.name[arm])
+                solver = cdcl(self.sentence, self.num_vars, self.taskname, self.name[arm], self.restart_method, self.conflict_threshold, self.vsids_scores)
+                Flag, num_decisions, sentence_tmp, vsids_scores_tmp, res, num_conflicts = solver.solve()
+                self.num_conflicts += num_conflicts
+                if Flag:
+                    self.end_time = time.time()
+                    self.log()
+                    return res
+                else:
+                    self.sentence = sentence_tmp
+                    self.vsids_scores = vsids_scores_tmp
+                    reward_tmp = math.log(num_decisions, 2)/len(res)
+                    self.num_pulls[arm] += 1
+                    self.emp_means[arm] = (self.emp_means[arm]*(self.num_pulls[arm]-1)+reward_tmp)/(self.num_pulls[arm])
+                    # print(len(self.sentence))
+            solver = cdcl(self.sentence, self.num_vars, self.taskname, self.decide_method, 'Nothing', self.conflict_threshold, self.vsids_scores)
+            Flag, num_decisions, sentence_tmp, vsids_scores_tmp, res, num_conflicts = solver.solve()
+            self.num_conflicts += num_conflicts
+            self.end_time = time.time()
+            self.log()
+            return res
+        elif self.restart_method == 'EXP3':
+            print(1111111111111111111111)
+            weight = np.ones(self.num_arms)
+            possible = np.ones(self.num_arms)
+            g_value = 2*self.time_threshold/3
+            gamma = min(1,math.sqrt((self.num_arms*math.log(self.num_arms))/((math.e-1)*g_value)))
+            for t in range(self.time_threshold):
+                for i in range(self.num_arms):
+                    possible[i] = (1-gamma)*weight[i]/np.sum(weight) + gamma/self.num_arms
+                ra = random.uniform(0,1)
+                curr_sum = 0
+                curr_arm = 0
+                for i in range(self.num_arms):
+                    curr_sum += possible[i]
+                    if ra <= curr_sum:
+                        curr_arm = i
+                        break
+                solver = cdcl(self.sentence, self.num_vars, self.taskname, self.name[curr_arm], self.restart_method, self.conflict_threshold, self.vsids_scores)
+                Flag, num_decisions, sentence_tmp, vsids_scores_tmp, res, num_conflicts = solver.solve()
+                self.num_conflicts += num_conflicts
+                if Flag:
+                    self.end_time = time.time()
+                    self.log()
+                    return res
+                else:
+                    self.sentence = sentence_tmp
+                    self.vsids_scores = vsids_scores_tmp
+                    reward_tmp = math.log(num_decisions, 2)/len(res)
+                    weight[curr_arm] = weight[curr_arm] * math.exp(gamma*reward_tmp/self.num_arms)
+            
+            solver = cdcl(self.sentence, self.num_vars, self.taskname, self.decide_method, 'Nothing', self.conflict_threshold, self.vsids_scores)
+            Flag, num_decisions, sentence_tmp, vsids_scores_tmp, res, num_conflicts = solver.solve()
+            self.num_conflicts += num_conflicts
+            self.end_time = time.time()
+            self.log()
+            return res
+                
+    def log(self):
+        w = "Time consumed: {} with conflict {} times".format(self.end_time - self.start_time, self.num_conflicts)
+        file_name = './logs/' + datetime.date.today().strftime('%m%d') + "_{}.log".format(self.taskname_write)
+        t0 = datetime.datetime.now().strftime('%H:%M:%S')
+        info = "{} : {}".format(t0, w)
+        print('*' * 30)
+        print(info)
+        print('*' * 30)
+        print(file_name)
+        with open(file_name, 'a') as f:
+            f.write(info + '\n')
 
 class cdcl():
-    def __init__(self, sentence, num_vars, taskname, decide_method):
+    def __init__(self, sentence, num_vars, taskname, decide_method, restart_method, conflict_threshold, vsids_scores):
         self.sentence = sentence
         self.num_vars = num_vars
 
@@ -25,9 +152,16 @@ class cdcl():
             'LRB': self.decide_lrb
         }
 
-        self.taskname = taskname.split('/')[-1] + '_' + decide_method
+        self.taskname = taskname.split('/')[-1] + '_' + decide_method + '_' + restart_method
         self.decide_method = decide_method
-        self.vsids_scores = None
+        self.vsids_scores = vsids_scores
+
+        # *************************************
+        # variable for restart
+        # ************************************
+        self.conflict_threshold = conflict_threshold
+        self.restart_method = restart_method
+        self.num_decisions = 0
 
         # *************************************
         # variable for both CHB and LRB
@@ -152,9 +286,9 @@ class cdcl():
         return assigned_lit
 
     def solve(self):
-        self.start_time = time.time()
+        # self.start_time = time.time()
         if self.bcp() is not None:
-            return None
+            return True, self.num_decisions, self.sentence, self.vsids_scores, None, self.num_conflicts
         with tqdm(total=self.num_vars) as pbar:
             assignment_prev = 0
             while (len(self.assignments) < self.num_vars):
@@ -164,6 +298,7 @@ class cdcl():
                 assigned_lit = self.decide_score()
                 self.decided_idx.append((len(self.assignments)))
                 self.assignments.append(assigned_lit)
+                self.num_decisions += 1 # for restart
                 self.assign_map[assigned_lit + self.num_vars] = 1
                 self.ante_reason[assigned_lit + self.num_vars] = []
 
@@ -191,6 +326,11 @@ class cdcl():
 
                 while conflict_ante is not None:
                     self.num_conflicts += 1
+                    if self.restart_method != 'Nothing':
+                        # print(self.num_conflicts)
+                        if self.num_conflicts > self.conflict_threshold:
+                            return False, self.num_decisions, self.sentence, self.vsids_scores, self.assignments, self.num_conflicts
+
                     # Learn conflict.
                     backtrack_level, learned_clause = self.analyse_conflict(conflict_ante)
                     # *******************************
@@ -225,7 +365,7 @@ class cdcl():
 
                     # Backtrack.
                     if backtrack_level < 0:
-                        return None
+                        return True, self.num_decisions, self.sentence, self.vsids_scores, None, self.num_conflicts
                     self.backtrack(backtrack_level)
 
                     # Propagate watch.
@@ -240,9 +380,9 @@ class cdcl():
                 # update CHB_value
                 self.update_chb_scores()
 
-        self.end_time = time.time()
-        self.log()
-        return self.assignments  # indicate SAT
+        # self.end_time = time.time()
+        # self.log()
+        return True, self.num_decisions, self.sentence, self.vsids_scores, self.assignments, self.num_conflicts  # indicate SAT
 
     def add_learned_clause(self, learned_clause):
         """Add learned clause to the sentence and update watch."""
@@ -426,13 +566,13 @@ class cdcl():
 
         return None  # indicate no conflict; other return the antecedent of the conflict
 
-    def log(self):
-        w = "Time consumed: {} with conflict {} times".format(self.end_time - self.start_time, self.num_conflicts)
-        file_name = './logs/' + datetime.date.today().strftime('%m%d') + "_{}.log".format(self.taskname)
-        t0 = datetime.datetime.now().strftime('%H:%M:%S')
-        info = "{} : {}".format(t0, w)
-        print('*' * 30)
-        print(info)
-        print('*' * 30)
-        with open(file_name, 'a') as f:
-            f.write(info + '\n')
+    # def log(self):
+    #     w = "Time consumed: {} with conflict {} times".format(self.end_time - self.start_time, self.num_conflicts)
+    #     file_name = './logs/' + datetime.date.today().strftime('%m%d') + "_{}.log".format(self.taskname)
+    #     t0 = datetime.datetime.now().strftime('%H:%M:%S')
+    #     info = "{} : {}".format(t0, w)
+    #     print('*' * 30)
+    #     print(info)
+    #     print('*' * 30)
+    #     with open(file_name, 'a') as f:
+    #         f.write(info + '\n')
