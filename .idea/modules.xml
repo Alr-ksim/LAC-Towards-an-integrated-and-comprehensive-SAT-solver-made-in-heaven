@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/SAT-Project.iml" filepath="$PROJECT_DIR$/.idea/SAT-Project.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/LAC_SAT.iml" filepath="$PROJECT_DIR$/.idea/LAC_SAT.iml" />
     </modules>
   </component>
 </project>

@@ -1,14 +1,20 @@
-#### SAT-Project
+## LAC_SAT Solver
 
-AI final project to improve SAT solver
+### Environment
+```
+OS: Window 10
+Python: 3.10.6
+Packeges:
+    pip install -r requirement.txt
+```
 
-We name this solver LAC because of our first names.
-
-<<<<<<< HEAD
-12.13: update the basic framework and add progress bar as well as logs
-=======
-
-
-test!
-
->>>>>>> da39754fbf3a5898f877c158a081f2f747a3d9fa
+### Solving method
+* Put the input *.cnf* file in the *\examples* folder.
+* Run the project using terminal:
+```
+    python main.py -i examples/test.cnf -d CHB -r EXP3
+```
+* The args are as followed:
+    * -i: The path to the input *.cnf* file
+    * -d: The decision method, option [VSIDS, CHB, LRB]
+    * -r: The restart strategy, option [Nothing, EXP3, UCB]

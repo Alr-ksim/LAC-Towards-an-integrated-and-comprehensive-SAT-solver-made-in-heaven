@@ -1,6 +1,5 @@
 import argparse
-from cdcl_ import cdcl
-from cdcl_ import cdcl_restart
+from cdcl import Simplify
 from utils import read_cnf
 
 
@@ -10,10 +9,10 @@ def parse_args():
         "-i", "--input", type=str, default="examples/unsat.cnf"
     )
     parser.add_argument(
-        "-d", "--decide_method", type=str, default="LRB", choices=['VSIDS', 'CHB', 'LRB']
+        "-d", "--decide_method", type=str, default="VSIDS", choices=['VSIDS', 'CHB', 'LRB']
     )
     parser.add_argument(
-        "-r", "--restart_method", type=str, default="Nothing", choices=['Nothing', 'EXP3', 'UCB']
+        "-r", "--restart_method", type=str, default="EXP3", choices=['Nothing', 'EXP3', 'UCB']
     )
 
     return parser.parse_args()
@@ -25,7 +24,7 @@ def main(args):
         sentence, num_vars = read_cnf(f)
 
     # Create CDCL solver and solve it!
-    solver = cdcl_restart(sentence, num_vars, args.input, args.decide_method, args.restart_method)
+    solver = Simplify(sentence, num_vars, args.decide_method, args.restart_method)
     res = solver.solve()
 
     if res is None:
